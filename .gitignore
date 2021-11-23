@@ -26,7 +26,16 @@
 *.a
 *.lib
 
+# Include raylib static library
+!lib/libraylib.a
+
 # Executables
 *.exe
 *.out
 *.app
+
+# Images
+*.png
+
+# Batch configurations
+*.txt
