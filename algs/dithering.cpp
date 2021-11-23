@@ -57,6 +57,7 @@ namespace Dithering
 	template<int PatternSize>
 	static void DitherOrdered(Image& image, COLOR_CHANEL pattern[PatternSize][PatternSize])
 	{
+		//Check every pixel in the image
 		for (int x = 0; x < image.width; x++)
 		{
 			for (int y = 0; y < image.height; y++)
@@ -64,9 +65,11 @@ namespace Dithering
 				Color currentColor = GetImageColor(image, x, y);
 				int patternX = x % PatternSize;
 				int patternY = y % PatternSize;
+				//For each chanel check if the current color value is higher than the value of the pattern at the required index
 				currentColor.r = currentColor.r > pattern[patternX][patternY] ? 255 : 0;
 				currentColor.g = currentColor.g > pattern[patternX][patternY] ? 255 : 0;
 				currentColor.b = currentColor.b > pattern[patternX][patternY] ? 255 : 0;
+				//Draw the quantized pixel
 				ImageDrawPixel(&image, x, y, currentColor);
 			}
 		}
