@@ -20,7 +20,8 @@
 				"-lraylib",
 				"-lopengl32",
 				"-lgdi32",
-				"-lwinmm"
+				"-lwinmm",
+				"-static" //Static linking
 			],
 			"options": {
 				"cwd": "${workspaceFolder}"
@@ -41,7 +42,6 @@
 				"${workspaceFolderBasename}_debug.exe",
 				"-Wall",
 				"-Wno-missing-braces",
-				"-DDEBUG",
 				"-I",
 				"include/",
 				"-L",
@@ -49,7 +49,10 @@
 				"-lraylib",
 				"-lopengl32",
 				"-lgdi32",
-				"-lwinmm"
+				"-lwinmm",
+				"-static-libgcc",
+				"-static-libstdc++",
+				"-static" //Static linking
 			],
 			"options": {
 				"cwd": "${workspaceFolder}"
