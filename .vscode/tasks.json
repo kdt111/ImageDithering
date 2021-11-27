@@ -50,8 +50,6 @@
 				"-lopengl32",
 				"-lgdi32",
 				"-lwinmm",
-				"-static-libgcc",
-				"-static-libstdc++",
 				"-static" //Static linking
 			],
 			"options": {

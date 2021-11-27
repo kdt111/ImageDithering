@@ -6,6 +6,8 @@
 
 //Raylib headers
 #include <raylib.h>
+#define RAYGUI_IMPLEMENTATION
+#include <raygui.h>
 
 //Implementation files
 #include "algs/dithering.cpp"
@@ -20,13 +22,15 @@ void (*algorithms[])(Image&, bool) = {
 
 const char *algorithmNames[] = {
 	"Random",
-	"Ordered 2x2 Bayer matrix",
-	"Ordered 4x4 Bayer matrix",
-	"Ordered 8x8 Bayer matrix",
-	"Ordered 16x16 Bayer matrix",
+	"Ordered 2x2",
+	"Ordered 4x4",
+	"Ordered 8x8",
+	"Ordered 16x16",
 	"Floyd-Steinberg"};
 
-constexpr const int algorithmCount = sizeof(algorithmNames) / sizeof(char*);
+const char *toggleButtonText = "None\nRandom\nOrdered 2x2\nOrdered 4x4\nOrdered 8x8\nOrdered 16x16\nFloyd-Steinberg";
+
+constexpr const int algorithmCount = sizeof(algorithmNames) / sizeof(char *);
 
 const int fontSize = 20;		//Font size for texts
 const int padding = 5;			//Padding of GUI panels
@@ -35,16 +39,17 @@ const float scaleMin = 0.01f;	//Min scale of the image (1%)
 Image baseImage; 				//Base image that was loaded
 Image displayedImage; 			//Image that is currently displayed
 Texture2D texture; 				//Texture created form the displayed image
-const char* title = "None"; 	//Algorithm title
+bool processColored = false;	//Should the image be processed in color
+int selectedAlgorithm = 0;		//Selected display algorithm
+bool executeAlgorithm = false;	//Should the algorithm be executed on the next frame
 bool imageLoaded = false;   	//Is a image loaded (Should processing be enabled)
 bool scaleRender = true; 		//Can the scale of the image be changed
 float scaleAdd = 0.0f; 			//Additional scale from the scrollwheel
 Vector2 moveOffset; 			//Image displaying offset
 float executionTime; 			//How long did the last algorithm took to finish
-bool showGui = true; 			//Should the GUI be visible (stats and options)
-bool namingFile = false; 		//Are we naming the output file
-std::string fileNameBuff; 		//output file name
 std::string filePath; 			//Input file directory
+char saveFileName[100];			//Save file name buffer
+bool inSaveDialog = false;		//Is the save dialog active
 
 //------------
 // LOGIC
@@ -122,20 +127,6 @@ void DoBatchProcessing(int fileCount, char** paths)
 	}
 }
 
-//Resets the output file name to the default value
-void ResetFileName()
-{
-	//Reset the file name to the default one
-	fileNameBuff = "out";
-}
-
-//Exports the processed image
-void ExportImage()
-{
-	//Construct the path using the loaded file directory and the provided file name
-	ExportImage(displayedImage, TextFormat("%s/%s.png", filePath.c_str(), fileNameBuff.c_str()));
-}
-
 //Executes the algorithm form the algorithms array
 void ExecuteAlgorithm(int algNumber)
 {
@@ -149,12 +140,8 @@ void ExecuteAlgorithm(int algNumber)
 
 	//Measure the time and execute the algorithm
 	float startTime = GetTime();
-	bool colored = IsKeyDown(KEY_LEFT_SHIFT) || IsKeyDown(KEY_RIGHT_SHIFT);
-	algorithms[algNumber](displayedImage, colored);
+	algorithms[algNumber](displayedImage, processColored);
 	executionTime = GetTime() - startTime;
-
-	//Set the display name algorithm name
-	title = algorithmNames[algNumber];
 
 	//Load the resoult to the display texture
 	texture = LoadTextureFromImage(displayedImage);
@@ -178,48 +165,9 @@ void HandleFileDropping()
 	}
 }
 
-//Handles the logic of naming a file
-void HandleFileNaming()
-{
-	//File is exported when the enter key is pressed and the file name is not empty
-	if (IsKeyPressed(KEY_ENTER) && fileNameBuff.size() > 0)
-	{
-		ExportImage();
-		namingFile = false;
-		ResetFileName();
-	}
-	else
-	{
-		//Remove last character if backspace was pressed
-		if (IsKeyPressed(KEY_BACKSPACE))
-		{
-			if (fileNameBuff.size() > 0)
-				fileNameBuff.resize(fileNameBuff.size() - 1);
-		}
-		else
-		{
-			//Clear the buffer of the pressed keys since the last event pooling
-			while (true)
-			{
-				char pressed = GetCharPressed();
-				if ((pressed >= 'a' && pressed <= 'z') || (pressed >= 'A' && pressed <= 'Z') || (pressed >= '0' && pressed <= '9') || pressed == '_')
-					fileNameBuff.append(1, pressed);
-				else
-					break;
-			}
-		}
-	}
-}
-
 //Main application update loop
 void UpdateLoop()
 {
-	if(namingFile)
-	{
-		HandleFileNaming();	
-		return;
-	}
-
 	HandleFileDropping();
 
 	if (imageLoaded)
@@ -233,50 +181,21 @@ void UpdateLoop()
 			moveOffset.y += delta.y;
 		}
 
-		//Toggle gui visibility
-		if (IsKeyPressed(KEY_TAB))
-			showGui = !showGui;
-
-		//Reset transformations
-		if (IsKeyPressed(KEY_R))
+		//Execute selected algorithm
+		if (executeAlgorithm)
 		{
-			//If shift is also pressed then lock the scaling
-			if (IsKeyDown(KEY_LEFT_SHIFT))
-				scaleRender = !scaleRender;
-			scaleAdd = 0.0f;
-			moveOffset.x = 0.0f;
-			moveOffset.y = 0.0f;
-		}
-
-		//Start file exporting process
-		if (IsKeyPressed(KEY_E))
-		{
-			namingFile = true;
-			return;
-		}
-
-		//Reload normal image
-		if (IsKeyPressed(KEY_N))
-		{
-			UnloadTexture(texture);
-			UnloadImage(displayedImage);
-
-			displayedImage = ImageCopy(baseImage);
-			texture = LoadTextureFromImage(displayedImage);
-
-			title = "None";
-			executionTime = 0.0f;
-		}
-
-		//Dither the image using the selected algorithm
-		for(int i = 0; i < algorithmCount; i++)
-		{
-			//Check for the pressed key by calculating it's offset from the '1' key
-			if(IsKeyPressed(KEY_ONE + i))
+			//If 0 is seleted then reload the base image
+			if (selectedAlgorithm == 0)
 			{
-				ExecuteAlgorithm(i);
-				break;
+				UnloadTexture(texture);
+				UnloadImage(displayedImage);
+				displayedImage = ImageCopy(baseImage);
+				texture = LoadTextureFromImage(displayedImage);
+				executionTime = 0.0f;
 			}
+			else
+				ExecuteAlgorithm(selectedAlgorithm - 1);
+			executeAlgorithm = false;
 		}
 	}
 }
@@ -285,89 +204,109 @@ void UpdateLoop()
 // GUI Drawing
 //------------
 
-//Draws a array of texts on a panel
-int DrawTextPanel(int xPos, int yPos, const char* texts[], int size, bool centered = false)
+//Retruns the render size of the longest text in the array
+int GeMaxTextSize(const char** texts, int size)
 {
-	//Initialized panel width and compute panel height
-	int panelWidth = INT_MIN;
-	int panelHeight = padding + (fontSize + padding) * size;
-
-	//Get the panel's width (size of the longest text)
-	for (int i = 0; i < size; i++)
+	int max = INT_MIN;
+	for(int i = 0; i < size; i++)
 	{
-		int currentWidth = MeasureText(texts[i], fontSize);
-		if (currentWidth > panelWidth)
-			panelWidth = currentWidth;
+		int current = MeasureText(texts[i], fontSize);
+		if(current > max)
+			max = current;
 	}
-
-	//Add padding to the panel width
-	panelWidth += padding * 2;
-
-	//If the panel should be centered then addjust it's position
-	if (centered)
-	{
-		xPos = (GetScreenWidth() - panelWidth) * 0.5f;
-		yPos = (GetScreenHeight() - panelHeight) * 0.5f;
-	}
-	else
-	{
-		//Clamp the panel's position so it's on the screen
-		xPos = xPos + panelWidth > GetScreenWidth() ? GetScreenWidth() - panelWidth : xPos;
-		yPos = yPos + panelHeight > GetScreenHeight() ? GetScreenHeight() - panelHeight : yPos;
-	}
-
-	//Draw background
-	DrawRectangle(xPos, yPos, panelWidth, panelHeight, WHITE);
-	int currentY = padding + yPos;
-	//Draw texts
-	for (int i = 0; i < size; i++)
-	{
-		DrawText(texts[i], xPos + padding, currentY, fontSize, BLACK);
-		currentY += fontSize + padding;
-	}
-	return currentY;
+	return max;
 }
 
 //Draws the GUI
 void DrawGUI(float scale)
 {
-	const char *stats[] = {
-		"Stats:",
-		TextFormat("Used algorithm: %s", title),
-		TextFormat("Dithering time: %.2f ms", executionTime * 1000.0f),
-		TextFormat("Image scale: %.2f%%", scale * 100.0f)
-	};
-
-	const int statsSize = sizeof(stats) / sizeof(char*);
-
-	const char *options[] = {
-		"Options:",
-		"[N] Show base image",
-		"[1-6] Different in grayscale",
-		"[SHIFT + 1-6] Dithering in color",
-		"[R] Reset transformations (image scale and offset)",
-		"[SHIFT + R] Toggle view to 100% image scale",
-		"[LMB + Mouse] Move image",
-		"[MouseWheel] Zoom image",
-		"[E] Export image",
-		"[TAB] Toggle GUI",
-		"",
-		"Created by Jan Malek"
-		};
-
-	const int optionsSize = sizeof(options) / sizeof(char*);
-
-	DrawTextPanel(0, 0, stats, statsSize);
-	DrawTextPanel(0, GetScreenHeight(), options, optionsSize);
-
-	if(namingFile)
+	if(inSaveDialog)
 	{
-		const char* texts[] = {
-			"Output file name (without extensions):",
-			fileNameBuff.c_str()
-		};
+		//Draw the save dialog
+		const int width = 400;
 
-		DrawTextPanel(0, 0, texts, 2, true);
+		float screenWidth = GetScreenWidth();
+		float screenHeight = GetScreenHeight();
+
+		//Offset so that the dialog is centered on the screen
+		float offset = (screenWidth - width) * 0.5f;
+
+		//Draw faded background
+		DrawRectangle(0, 0, screenWidth, screenHeight, (Color){255, 255, 255, 200});
+		GuiTextBox((Rectangle){offset, screenHeight / 2, width, fontSize * 1.5f}, saveFileName, 100, true);
+		//Draw a centered label
+		int prevStyle = GuiGetStyle(LABEL, TEXT_ALIGNMENT);
+		GuiSetStyle(LABEL, TEXT_ALIGNMENT, GUI_TEXT_ALIGN_CENTER);
+		GuiLabel((Rectangle){offset, screenHeight / 2 - 40, width, fontSize}, "Save file name");
+		GuiSetStyle(LABEL, TEXT_ALIGNMENT, prevStyle);
+		//Draw and handle the save button
+		if (GuiButton((Rectangle){offset, screenHeight / 2 + 40, width / 2 - 5, fontSize * 1.5f}, "Save"))
+		{
+			if(TextLength(saveFileName) > 0)
+			{
+				//Export the image and add the extension in none was provided
+				ExportImage(displayedImage, TextFormat("%s/%s", filePath.c_str(), IsFileExtension(saveFileName, ".png") ? saveFileName : TextFormat("%s.png", saveFileName)));
+				inSaveDialog = false;
+			}
+		}
+		//Cancel the save dialog
+		if (GuiButton((Rectangle){offset + width / 2 + 10, screenHeight / 2 + 40, width / 2 - 10, fontSize * 1.5f}, "Cancel"))
+			inSaveDialog = false;
+	}
+	else
+	{
+		//Start cooridnates of the GUI
+		const float startX = 20;
+		const float startY = 20;
+
+		//Button dimensions
+		const float buttonHeight = fontSize + padding * 2;
+		const float buttonWidth = GeMaxTextSize(algorithmNames, algorithmCount) + padding * 8;
+
+		//Current drawind positions
+		float currentY = startY;
+		float currentX = startX;
+
+		//Draw algorithm selection
+		int initialSelected = selectedAlgorithm;
+		selectedAlgorithm = GuiToggleGroup((Rectangle){currentX, currentY, buttonWidth, buttonHeight}, toggleButtonText, selectedAlgorithm);
+
+		//Move the drawind point
+		currentX += buttonWidth + padding;
+		currentY = startY;
+
+		//Draw colored selection
+		bool initialColored = processColored;
+		processColored = GuiToggle((Rectangle){currentX, currentY, buttonWidth, buttonHeight}, "Colored", processColored);
+		currentY += buttonHeight + padding;
+
+		//Process the image if paramers were changed
+		if (initialSelected != selectedAlgorithm || initialColored != processColored)
+			executeAlgorithm = true;
+
+		//Draw scale render controll
+		scaleRender = GuiToggle((Rectangle){currentX, currentY, buttonWidth, buttonHeight}, "Scale render", scaleRender);
+		currentY += buttonHeight + padding;
+
+		//Draw reset controll
+		if (GuiButton((Rectangle){currentX, currentY, buttonWidth, buttonHeight}, "Reset scale/offset"))
+		{
+			scaleAdd = 0.0f;
+			moveOffset.x = 0.0f;
+			moveOffset.y = 0.0f;
+		}
+		currentY += buttonHeight + padding;
+
+		//Draw export button
+		if (GuiButton((Rectangle){currentX, currentY, buttonWidth, buttonHeight}, GuiIconText(RICON_FILE_SAVE, "Export")) && !inSaveDialog)
+			inSaveDialog = true;
+		currentX += buttonWidth + padding;
+
+		//Draw the stats
+		currentY = startY;
+		GuiLabel((Rectangle){currentX, currentY, buttonWidth, buttonHeight}, TextFormat("Execution time: %.2f ms", executionTime * 1000.0f));
+		currentY += buttonHeight + padding;
+		GuiLabel((Rectangle){currentX, currentY, buttonWidth, buttonHeight}, TextFormat("Image scale: %.2f%%", scale * 100.0f));
 	}
 }
 
@@ -398,8 +337,7 @@ void DrawLoop()
 
 		//Draw the image with the proper scale and offset
 		DrawTextureEx(texture, (Vector2){(screenWidth - drawWidth) * 0.5f + moveOffset.x, (screenHeight - drawHeight) * 0.5f + moveOffset.y}, 0.0f, scale, WHITE);
-		if (showGui)
-			DrawGUI(scale);
+		DrawGUI(scale);
 	}
 	else
 	{
@@ -431,7 +369,7 @@ int main(int argc, char **argv)
 	InitWindow(800, 600, "Image Dithering");
 	SetWindowMinSize(800, 600);
 
-	ResetFileName();
+	GuiSetStyle(DEFAULT, TEXT_SIZE, fontSize); //Set gui text size
 
 	//Load the base image if passed as an argument
 	if(argc == 2)
@@ -455,5 +393,3 @@ int main(int argc, char **argv)
 	CloseWindow();
 	return 0;
 }
-
-
