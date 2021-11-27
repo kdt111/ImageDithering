@@ -370,6 +370,7 @@ int main(int argc, char **argv)
 	SetWindowMinSize(800, 600);
 
 	GuiSetStyle(DEFAULT, TEXT_SIZE, fontSize); //Set gui text size
+	GuiSetStyle(TOGGLE, GROUP_PADDING, padding); //Set toggle group padding
 
 	//Load the base image if passed as an argument
 	if(argc == 2)
