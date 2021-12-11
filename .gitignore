@@ -26,9 +26,6 @@
 *.a
 *.lib
 
-# Include raylib static library
-!lib/libraylib.a
-
 # Executables
 *.exe
 *.out
@@ -39,3 +36,11 @@
 
 # Batch configurations
 *.txt
+
+!CMakeLists.txt
+
+# CMake build folder
+build/
+
+# VS Code folder
+.vscode/

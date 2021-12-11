@@ -1,16 +1,17 @@
 //Standard headers
 #include <limits.h>
-#include <iostream>
-#include <fstream>
 #include <string>
+#include <fstream>
+#include <math.h>
 
 //Raylib headers
 #include <raylib.h>
-#define RAYGUI_IMPLEMENTATION
-#include <raygui.h>
+#include <extras/raygui.h>
 
-//Implementation files
-#include "algs/dithering.cpp"
+//tinyfiledialogs header
+#include <tinyfiledialogs.h>
+
+#include "dithering.h"
 
 void (*algorithms[])(Image&, bool) = {
 	Dithering::Random,
@@ -48,8 +49,13 @@ float scaleAdd = 0.0f; 			//Additional scale from the scrollwheel
 Vector2 moveOffset; 			//Image displaying offset
 float executionTime; 			//How long did the last algorithm took to finish
 std::string filePath; 			//Input file directory
+std::string applicationPath;	//Path to base folder of the application
 char saveFileName[100];			//Save file name buffer
 bool inSaveDialog = false;		//Is the save dialog active
+
+//File filters
+static const char *filterPaterns[] = {"*.png"};
+static constexpr int filterPaternSize = sizeof(filterPaterns) / sizeof(char *);
 
 //------------
 // LOGIC
@@ -78,10 +84,14 @@ void LoadBaseFile(char* filePath)
 		{
 			displayedImage = ImageCopy(baseImage);
 			texture = LoadTextureFromImage(displayedImage);
-			::filePath = GetDirectoryPath(filePath);
+			::filePath = filePath;
 			imageLoaded = true;
 		}
+		else
+			tinyfd_messageBox("Loading error!", "File cant be loaded as an image", "ok", "error", 1);
 	}
+	else
+		tinyfd_messageBox("Loading error!", "Only .png files are supported", "ok", "error", 1);
 }
 
 //Performs batch processing of images
@@ -200,6 +210,30 @@ void UpdateLoop()
 	}
 }
 
+//Native dialogs for exporting the algorithm resoult
+void SaveDialog()
+{
+	std::string startPath = GetDirectoryPath(filePath.c_str());
+	startPath += "/out.png";
+
+	char* savePath = tinyfd_saveFileDialog("Export the file...", startPath.c_str(), filterPaternSize, filterPaterns, nullptr);
+	if(savePath != nullptr)
+	{
+		if(ExportImage(displayedImage, savePath))
+			tinyfd_messageBox("Export status", "File exported", "ok", "info", 1);
+		else
+			tinyfd_messageBox("Export status", "File export error", "ok", "error", 1);
+	}		
+}
+
+//Native dialog for opening a file
+void LoadDialog()
+{
+	char *openPath = tinyfd_openFileDialog("Open image...", filePath.empty() ? applicationPath.c_str() : filePath.c_str(), filterPaternSize, filterPaterns, nullptr, 0);
+	if (openPath != nullptr)
+		LoadBaseFile(openPath);
+}
+
 //------------
 // GUI Drawing
 //------------
@@ -220,75 +254,48 @@ int GeMaxTextSize(const char** texts, int size)
 //Draws the GUI
 void DrawGUI(float scale)
 {
-	if(inSaveDialog)
+	// Start cooridnates of the GUI
+	const float startX = 20;
+	const float startY = 20;
+
+	// Button dimensions
+	const float buttonHeight = fontSize + padding * 2;
+	const float buttonWidth = GeMaxTextSize(algorithmNames, algorithmCount) + padding * 8;
+
+	// Current drawind positions
+	float currentY = startY;
+	float currentX = startX;
+
+	if(GuiButton((Rectangle){currentX, currentY, buttonWidth, buttonHeight}, "Open image"))
+		LoadDialog();
+	
+	currentY += buttonHeight + padding;
+
+	//Draw rest if the image is loaded
+	if(imageLoaded)
 	{
-		//Draw the save dialog
-		const int width = 400;
-
-		float screenWidth = GetScreenWidth();
-		float screenHeight = GetScreenHeight();
-
-		//Offset so that the dialog is centered on the screen
-		float offset = (screenWidth - width) * 0.5f;
-
-		//Draw faded background
-		DrawRectangle(0, 0, screenWidth, screenHeight, (Color){255, 255, 255, 200});
-		GuiTextBox((Rectangle){offset, screenHeight / 2, width, fontSize * 1.5f}, saveFileName, 100, true);
-		//Draw a centered label
-		int prevStyle = GuiGetStyle(LABEL, TEXT_ALIGNMENT);
-		GuiSetStyle(LABEL, TEXT_ALIGNMENT, GUI_TEXT_ALIGN_CENTER);
-		GuiLabel((Rectangle){offset, screenHeight / 2 - 40, width, fontSize}, "Save file name");
-		GuiSetStyle(LABEL, TEXT_ALIGNMENT, prevStyle);
-		//Draw and handle the save button
-		if (GuiButton((Rectangle){offset, screenHeight / 2 + 40, width / 2 - 5, fontSize * 1.5f}, "Save"))
-		{
-			if(TextLength(saveFileName) > 0)
-			{
-				//Export the image and add the extension in none was provided
-				ExportImage(displayedImage, TextFormat("%s/%s", filePath.c_str(), IsFileExtension(saveFileName, ".png") ? saveFileName : TextFormat("%s.png", saveFileName)));
-				inSaveDialog = false;
-			}
-		}
-		//Cancel the save dialog
-		if (GuiButton((Rectangle){offset + width / 2 + 10, screenHeight / 2 + 40, width / 2 - 10, fontSize * 1.5f}, "Cancel"))
-			inSaveDialog = false;
-	}
-	else
-	{
-		//Start cooridnates of the GUI
-		const float startX = 20;
-		const float startY = 20;
-
-		//Button dimensions
-		const float buttonHeight = fontSize + padding * 2;
-		const float buttonWidth = GeMaxTextSize(algorithmNames, algorithmCount) + padding * 8;
-
-		//Current drawind positions
-		float currentY = startY;
-		float currentX = startX;
-
-		//Draw algorithm selection
+		// Draw algorithm selection
 		int initialSelected = selectedAlgorithm;
 		selectedAlgorithm = GuiToggleGroup((Rectangle){currentX, currentY, buttonWidth, buttonHeight}, toggleButtonText, selectedAlgorithm);
 
-		//Move the drawind point
+		// Move the drawing point
 		currentX += buttonWidth + padding;
 		currentY = startY;
 
-		//Draw colored selection
+		// Draw colored selection
 		bool initialColored = processColored;
 		processColored = GuiToggle((Rectangle){currentX, currentY, buttonWidth, buttonHeight}, "Colored", processColored);
 		currentY += buttonHeight + padding;
 
-		//Process the image if paramers were changed
+		// Process the image if paramers were changed
 		if (initialSelected != selectedAlgorithm || initialColored != processColored)
 			executeAlgorithm = true;
 
-		//Draw scale render controll
-		scaleRender = GuiToggle((Rectangle){currentX, currentY, buttonWidth, buttonHeight}, "Scale render", scaleRender);
+		// Draw scale render controll
+		scaleRender = GuiToggle((Rectangle){currentX, currentY, buttonWidth, buttonHeight}, TextFormat("%s zoom", scaleRender ? "Lock" : "Unlock"), scaleRender);
 		currentY += buttonHeight + padding;
 
-		//Draw reset controll
+		// Draw reset controll
 		if (GuiButton((Rectangle){currentX, currentY, buttonWidth, buttonHeight}, "Reset scale/offset"))
 		{
 			scaleAdd = 0.0f;
@@ -297,16 +304,16 @@ void DrawGUI(float scale)
 		}
 		currentY += buttonHeight + padding;
 
-		//Draw export button
-		if (GuiButton((Rectangle){currentX, currentY, buttonWidth, buttonHeight}, GuiIconText(RICON_FILE_SAVE, "Export")) && !inSaveDialog)
-			inSaveDialog = true;
+		// Draw export button
+		if (GuiButton((Rectangle){currentX, currentY, buttonWidth, buttonHeight}, "Export") && !inSaveDialog)
+			SaveDialog();
 		currentX += buttonWidth + padding;
 
-		//Draw the stats
+		// Draw the stats
 		currentY = startY;
 		GuiLabel((Rectangle){currentX, currentY, buttonWidth, buttonHeight}, TextFormat("Execution time: %.2f ms", executionTime * 1000.0f));
 		currentY += buttonHeight + padding;
-		GuiLabel((Rectangle){currentX, currentY, buttonWidth, buttonHeight}, TextFormat("Image scale: %.2f%%", scale * 100.0f));
+		GuiLabel((Rectangle){currentX, currentY, buttonWidth, buttonHeight}, TextFormat("Image zoom: %.2f%%", scale * 100.0f));
 	}
 }
 
@@ -315,12 +322,12 @@ void DrawLoop()
 {
 	BeginDrawing();
 	ClearBackground(WHITE);
+	float scale = 1.0f;
 	if (imageLoaded)
 	{
 		float screenWidth = GetScreenWidth();
 		float screenHeight = GetScreenHeight();
 		//Calculate the image scale, so it takes as much of the window as possible
-		float scale;
 		if (scaleRender)
 		{
 			scale = fminf(screenWidth / texture.width, screenHeight / texture.height) + scaleAdd;
@@ -337,7 +344,6 @@ void DrawLoop()
 
 		//Draw the image with the proper scale and offset
 		DrawTextureEx(texture, (Vector2){(screenWidth - drawWidth) * 0.5f + moveOffset.x, (screenHeight - drawHeight) * 0.5f + moveOffset.y}, 0.0f, scale, WHITE);
-		DrawGUI(scale);
 	}
 	else
 	{
@@ -346,6 +352,7 @@ void DrawLoop()
 		int xSize = MeasureText(text, fontSize);
 		DrawText(text, ((float)GetScreenWidth() - xSize) * 0.5f, ((float)GetScreenHeight() - fontSize) * 0.5f, fontSize, BLACK);
 	}
+	DrawGUI(scale);
 	EndDrawing();
 }
 
@@ -363,6 +370,11 @@ int main(int argc, char **argv)
 	#ifndef DEBUG
 	SetTraceLogLevel(LOG_NONE);
 	#endif
+
+	//All dialogs should be graphical
+	tinyfd_assumeGraphicDisplay = 1;
+	//Set the base open file location to the application folder
+	applicationPath = argv[0];//GetDirectoryPath(argv[0]);
 
 	//Raylib configuration
 	SetConfigFlags(FLAG_WINDOW_RESIZABLE | FLAG_VSYNC_HINT);
@@ -392,5 +404,4 @@ int main(int argc, char **argv)
 		UnloadTexture(texture);
 	}
 	CloseWindow();
-	return 0;
 }
