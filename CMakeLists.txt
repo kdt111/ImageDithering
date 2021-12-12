@@ -19,8 +19,10 @@ else()
 	target_link_options(${PROJECT_NAME} PRIVATE -mwindows) # Disable console output
 endif()
 
-set(OPENGL_VERSION "1.1") # Force a low OpenGL version
+include(cmake/raylibOptions.cmake) # raylib build configuration
 include(cmake/raylib.cmake) # Include raylib and featch if required
+target_compile_definitions(raylib PUBLIC SUPPORT_IMAGE_EXPORT) # Force image export support
+
 target_link_libraries(${PROJECT_NAME} raylib)
 
 # Linking required by raylib

@@ -40,22 +40,19 @@ const float scaleMin = 0.01f;	//Min scale of the image (1%)
 Image baseImage; 				//Base image that was loaded
 Image displayedImage; 			//Image that is currently displayed
 Texture2D texture; 				//Texture created form the displayed image
-bool processColored = false;	//Should the image be processed in color
-int selectedAlgorithm = 0;		//Selected display algorithm
-bool executeAlgorithm = false;	//Should the algorithm be executed on the next frame
 bool imageLoaded = false;   	//Is a image loaded (Should processing be enabled)
+
 bool scaleRender = true; 		//Can the scale of the image be changed
 float scaleAdd = 0.0f; 			//Additional scale from the scrollwheel
 Vector2 moveOffset; 			//Image displaying offset
-float executionTime; 			//How long did the last algorithm took to finish
+
 std::string filePath; 			//Input file directory
 std::string applicationPath;	//Path to base folder of the application
-char saveFileName[100];			//Save file name buffer
-bool inSaveDialog = false;		//Is the save dialog active
 
 //File filters
-static const char *filterPaterns[] = {"*.png"};
+static const char *filterPaterns[] = {"*.png", "*.bmp", "*.tga", "*.jpg"};
 static constexpr int filterPaternSize = sizeof(filterPaterns) / sizeof(char *);
+static const char *filterDescription = "Image files (*.png, *.bmp, *.tga, *.jpg)";
 
 //------------
 // LOGIC
@@ -64,34 +61,29 @@ static constexpr int filterPaternSize = sizeof(filterPaterns) / sizeof(char *);
 //Load a file form the provided path and sets it as the baseImage
 void LoadBaseFile(char* filePath)
 {
-	//Only .png images are supported
-	if(IsFileExtension(filePath, ".png"))
+	if (imageLoaded)
 	{
-		//Unload previous image data if it was loaded
-		if (imageLoaded)
-		{
-			UnloadImage(baseImage);
-			UnloadImage(displayedImage);
-			UnloadTexture(texture);
-			::filePath.clear();
-			imageLoaded = false;
-		}
+		UnloadImage(baseImage);
+		UnloadImage(displayedImage);
+		UnloadTexture(texture);
+		::filePath.clear();
+		imageLoaded = false;
+	}
 
-		//Load the new image
-		baseImage = LoadImage(filePath);
-		//Don't do anything if the image wasn't loaded
-		if (baseImage.data != nullptr)
-		{
-			displayedImage = ImageCopy(baseImage);
-			texture = LoadTextureFromImage(displayedImage);
-			::filePath = filePath;
-			imageLoaded = true;
-		}
-		else
-			tinyfd_messageBox("Loading error!", "File cant be loaded as an image", "ok", "error", 1);
+	// Load the new image
+	baseImage = LoadImage(filePath);
+	// Don't do anything if the image wasn't loaded
+	if (baseImage.data != nullptr)
+	{
+		//Format the image to the required pixel format
+		//ImageFormat(&baseImage, PIXELFORMAT_UNCOMPRESSED_R8G8B8);
+		displayedImage = ImageCopy(baseImage);
+		texture = LoadTextureFromImage(displayedImage);
+		::filePath = filePath;
+		imageLoaded = true;
 	}
 	else
-		tinyfd_messageBox("Loading error!", "Only .png files are supported", "ok", "error", 1);
+		tinyfd_messageBox("Loading error!", "File cant be loaded as an image", "ok", "error", 1);
 }
 
 //Performs batch processing of images
@@ -122,23 +114,23 @@ void DoBatchProcessing(int fileCount, char** paths)
 		//Dither every image from the passed files
 		for (int i = 0; i < fileCount; i++)
 		{
-			if(IsFileExtension(paths[i], ".png"))
+			if(IsFileExtension(paths[i], ".txt"))
+				continue;
+
+			image = LoadImage(paths[i]);
+			if (image.data != nullptr)
 			{
-				image = LoadImage(paths[i]);
-				if(image.data != nullptr)
-				{
-					algorithms[alg](image, colored);
-					//Export the image to the same location with the _processed suffix
-					ExportImage(image, TextFormat("%s/%s_processed.png", GetDirectoryPath(paths[i]), GetFileNameWithoutExt(paths[i])));
-					UnloadImage(image);
-				}
+				algorithms[alg](image, colored);
+				// Export the image to the same location with the _processed suffix
+				ExportImage(image, TextFormat("%s/%s_processed%s", GetDirectoryPath(paths[i]), GetFileNameWithoutExt(paths[i]), GetFileExtension(paths[i])));
+				UnloadImage(image);
 			}
 		}
 	}
 }
 
 //Executes the algorithm form the algorithms array
-void ExecuteAlgorithm(int algNumber)
+void ExecuteAlgorithm(int algNumber, bool colored)
 {
 	if(algNumber < 0 || algNumber >= algorithmCount)
 		return;
@@ -148,10 +140,8 @@ void ExecuteAlgorithm(int algNumber)
 	UnloadImage(displayedImage);
 	displayedImage = ImageCopy(baseImage);
 
-	//Measure the time and execute the algorithm
-	float startTime = GetTime();
-	algorithms[algNumber](displayedImage, processColored);
-	executionTime = GetTime() - startTime;
+	//Execute the algorithm
+	algorithms[algNumber](displayedImage, colored);
 
 	//Load the resoult to the display texture
 	texture = LoadTextureFromImage(displayedImage);
@@ -190,23 +180,6 @@ void UpdateLoop()
 			moveOffset.x += delta.x;
 			moveOffset.y += delta.y;
 		}
-
-		//Execute selected algorithm
-		if (executeAlgorithm)
-		{
-			//If 0 is seleted then reload the base image
-			if (selectedAlgorithm == 0)
-			{
-				UnloadTexture(texture);
-				UnloadImage(displayedImage);
-				displayedImage = ImageCopy(baseImage);
-				texture = LoadTextureFromImage(displayedImage);
-				executionTime = 0.0f;
-			}
-			else
-				ExecuteAlgorithm(selectedAlgorithm - 1);
-			executeAlgorithm = false;
-		}
 	}
 }
 
@@ -214,9 +187,10 @@ void UpdateLoop()
 void SaveDialog()
 {
 	std::string startPath = GetDirectoryPath(filePath.c_str());
-	startPath += "/out.png";
+	startPath += "/out";
+	startPath += GetFileExtension(filePath.c_str());
 
-	char* savePath = tinyfd_saveFileDialog("Export the file...", startPath.c_str(), filterPaternSize, filterPaterns, nullptr);
+	char* savePath = tinyfd_saveFileDialog("Export the file...", startPath.c_str(), filterPaternSize, filterPaterns, filterDescription);
 	if(savePath != nullptr)
 	{
 		if(ExportImage(displayedImage, savePath))
@@ -229,7 +203,7 @@ void SaveDialog()
 //Native dialog for opening a file
 void LoadDialog()
 {
-	char *openPath = tinyfd_openFileDialog("Open image...", filePath.empty() ? applicationPath.c_str() : filePath.c_str(), filterPaternSize, filterPaterns, nullptr, 0);
+	char *openPath = tinyfd_openFileDialog("Open image...", filePath.empty() ? applicationPath.c_str() : filePath.c_str(), filterPaternSize, filterPaterns, filterDescription, 0);
 	if (openPath != nullptr)
 		LoadBaseFile(openPath);
 }
@@ -252,8 +226,14 @@ int GeMaxTextSize(const char** texts, int size)
 }
 
 //Draws the GUI
-void DrawGUI(float scale)
+void DrawGUI()
 {
+	//GUI state
+	static int selectedAlgorithm;
+	static bool processColored;
+	static bool showAlgorithmSelection;
+	static bool showOptions;
+
 	// Start cooridnates of the GUI
 	const float startX = 20;
 	const float startY = 20;
@@ -262,58 +242,66 @@ void DrawGUI(float scale)
 	const float buttonHeight = fontSize + padding * 2;
 	const float buttonWidth = GeMaxTextSize(algorithmNames, algorithmCount) + padding * 8;
 
-	// Current drawind positions
-	float currentY = startY;
-	float currentX = startX;
+	Rectangle drawRect = {startX, startY, buttonWidth, buttonHeight};
 
-	if(GuiButton((Rectangle){currentX, currentY, buttonWidth, buttonHeight}, "Open image"))
+	if(GuiButton(drawRect, "Open image"))
 		LoadDialog();
-	
-	currentY += buttonHeight + padding;
+	drawRect.y += buttonHeight + padding;
 
 	//Draw rest if the image is loaded
 	if(imageLoaded)
 	{
-		// Draw algorithm selection
-		int initialSelected = selectedAlgorithm;
-		selectedAlgorithm = GuiToggleGroup((Rectangle){currentX, currentY, buttonWidth, buttonHeight}, toggleButtonText, selectedAlgorithm);
+		// Draw export button
+		if (GuiButton(drawRect, "Export image"))
+			SaveDialog();
+		drawRect.x += buttonWidth + padding;
+		drawRect.y = startY;
 
-		// Move the drawing point
-		currentX += buttonWidth + padding;
-		currentY = startY;
+		// Draw algorithm selection
+		showAlgorithmSelection = GuiToggle(drawRect, TextFormat("%s algorithms", showAlgorithmSelection ? "Hide" : "Show"), showAlgorithmSelection);
+		drawRect.y += buttonHeight + padding;
+		int initialSelected = selectedAlgorithm;
+		if(showAlgorithmSelection)
+			selectedAlgorithm = GuiToggleGroup(drawRect, toggleButtonText, selectedAlgorithm);
+		drawRect.x += buttonWidth + padding;
+		drawRect.y = startY;
 
 		// Draw colored selection
+		showOptions = GuiToggle(drawRect, TextFormat("%s options", showOptions ? "Hide" : "Show"), showOptions);
+		drawRect.y += buttonHeight + padding;
 		bool initialColored = processColored;
-		processColored = GuiToggle((Rectangle){currentX, currentY, buttonWidth, buttonHeight}, "Colored", processColored);
-		currentY += buttonHeight + padding;
+		if(showOptions)
+		{
+			processColored = GuiToggle(drawRect, "Colored", processColored);
+			drawRect.y += buttonHeight + padding;
+
+			// Draw scale render controll
+			scaleRender = GuiToggle(drawRect, TextFormat("%s zoom", scaleRender ? "Lock" : "Unlock"), scaleRender);
+			drawRect.y += buttonHeight + padding;
+
+			// Draw reset controll
+			if (GuiButton(drawRect, "Reset scale/offset"))
+			{
+				scaleAdd = 0.0f;
+				moveOffset.x = 0.0f;
+				moveOffset.y = 0.0f;
+			}
+		}
 
 		// Process the image if paramers were changed
 		if (initialSelected != selectedAlgorithm || initialColored != processColored)
-			executeAlgorithm = true;
-
-		// Draw scale render controll
-		scaleRender = GuiToggle((Rectangle){currentX, currentY, buttonWidth, buttonHeight}, TextFormat("%s zoom", scaleRender ? "Lock" : "Unlock"), scaleRender);
-		currentY += buttonHeight + padding;
-
-		// Draw reset controll
-		if (GuiButton((Rectangle){currentX, currentY, buttonWidth, buttonHeight}, "Reset scale/offset"))
 		{
-			scaleAdd = 0.0f;
-			moveOffset.x = 0.0f;
-			moveOffset.y = 0.0f;
+			// If 0 is seleted then reload the base image
+			if (selectedAlgorithm == 0)
+			{
+				UnloadTexture(texture);
+				UnloadImage(displayedImage);
+				displayedImage = ImageCopy(baseImage);
+				texture = LoadTextureFromImage(displayedImage);
+			}
+			else
+				ExecuteAlgorithm(selectedAlgorithm - 1, processColored);
 		}
-		currentY += buttonHeight + padding;
-
-		// Draw export button
-		if (GuiButton((Rectangle){currentX, currentY, buttonWidth, buttonHeight}, "Export") && !inSaveDialog)
-			SaveDialog();
-		currentX += buttonWidth + padding;
-
-		// Draw the stats
-		currentY = startY;
-		GuiLabel((Rectangle){currentX, currentY, buttonWidth, buttonHeight}, TextFormat("Execution time: %.2f ms", executionTime * 1000.0f));
-		currentY += buttonHeight + padding;
-		GuiLabel((Rectangle){currentX, currentY, buttonWidth, buttonHeight}, TextFormat("Image zoom: %.2f%%", scale * 100.0f));
 	}
 }
 
@@ -322,12 +310,12 @@ void DrawLoop()
 {
 	BeginDrawing();
 	ClearBackground(WHITE);
-	float scale = 1.0f;
 	if (imageLoaded)
 	{
 		float screenWidth = GetScreenWidth();
 		float screenHeight = GetScreenHeight();
 		//Calculate the image scale, so it takes as much of the window as possible
+		float scale;
 		if (scaleRender)
 		{
 			scale = fminf(screenWidth / texture.width, screenHeight / texture.height) + scaleAdd;
@@ -348,11 +336,11 @@ void DrawLoop()
 	else
 	{
 		//Display the instruction text
-		const char *text = "Drop image (.png) here!";
+		const char *text = "Drop image here!";
 		int xSize = MeasureText(text, fontSize);
 		DrawText(text, ((float)GetScreenWidth() - xSize) * 0.5f, ((float)GetScreenHeight() - fontSize) * 0.5f, fontSize, BLACK);
 	}
-	DrawGUI(scale);
+	DrawGUI();
 	EndDrawing();
 }
 
