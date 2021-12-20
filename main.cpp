@@ -12,6 +12,7 @@
 #include <tinyfiledialogs.h>
 
 #include "dithering.h"
+#include "luaalgorithm.h"
 
 void (*algorithms[])(Image&, bool) = {
 	Dithering::Random,
@@ -45,6 +46,8 @@ bool imageLoaded = false;   	//Is a image loaded (Should processing be enabled)
 bool scaleRender = true; 		//Can the scale of the image be changed
 float scaleAdd = 0.0f; 			//Additional scale from the scrollwheel
 Vector2 moveOffset; 			//Image displaying offset
+
+bool beepOnCompleted = false;	//The program will beep when the operation is finished
 
 std::string filePath; 			//Input file directory
 std::string applicationPath;	//Path to base folder of the application
@@ -129,7 +132,7 @@ void DoBatchProcessing(int fileCount, char** paths)
 	}
 }
 
-//Executes the algorithm form the algorithms array
+//Executes the algorithm from the algorithms array
 void ExecuteAlgorithm(int algNumber, bool colored)
 {
 	if(algNumber < 0 || algNumber >= algorithmCount)
@@ -145,6 +148,27 @@ void ExecuteAlgorithm(int algNumber, bool colored)
 
 	//Load the resoult to the display texture
 	texture = LoadTextureFromImage(displayedImage);
+
+	if (beepOnCompleted)
+		tinyfd_beep();
+}
+
+//Executes the algorithm from the external Lua script
+void ExecuteLuaAlgorihtm(const char* scriptPath)
+{
+	// Unload old data
+	UnloadTexture(texture);
+	UnloadImage(displayedImage);
+	displayedImage = ImageCopy(baseImage);
+
+	Dithering::LuaInit(displayedImage);
+	Dithering::LuaExecute(scriptPath);
+
+	// Load the resoult to the display texture
+	texture = LoadTextureFromImage(displayedImage);
+
+	if(beepOnCompleted)
+		tinyfd_beep();
 }
 
 //Handles the file dropping on the application screen
@@ -213,7 +237,7 @@ void LoadDialog()
 //------------
 
 //Retruns the render size of the longest text in the array
-int GeMaxTextSize(const char** texts, int size)
+int GetMaxTextSize(const char** texts, int size)
 {
 	int max = INT_MIN;
 	for(int i = 0; i < size; i++)
@@ -240,7 +264,7 @@ void DrawGUI()
 
 	// Button dimensions
 	const float buttonHeight = fontSize + padding * 2;
-	const float buttonWidth = GeMaxTextSize(algorithmNames, algorithmCount) + padding * 8;
+	const float buttonWidth = GetMaxTextSize(algorithmNames, algorithmCount) + padding * 8;
 
 	Rectangle drawRect = {startX, startY, buttonWidth, buttonHeight};
 
@@ -262,7 +286,17 @@ void DrawGUI()
 		drawRect.y += buttonHeight + padding;
 		int initialSelected = selectedAlgorithm;
 		if(showAlgorithmSelection)
+		{
+			if (GuiButton(drawRect, "From Lua script"))
+			{
+				const char *filter[] = {"*.lua"};
+				const char *path = tinyfd_openFileDialog("Open script", filePath.c_str(), 1, filter, "Lua scripts (*.lua)", 0);
+				if(path != nullptr)
+					ExecuteLuaAlgorihtm(path);
+			}
+			drawRect.y += buttonHeight + padding;
 			selectedAlgorithm = GuiToggleGroup(drawRect, toggleButtonText, selectedAlgorithm);
+		}
 		drawRect.x += buttonWidth + padding;
 		drawRect.y = startY;
 
@@ -276,7 +310,7 @@ void DrawGUI()
 			drawRect.y += buttonHeight + padding;
 
 			// Draw scale render controll
-			scaleRender = GuiToggle(drawRect, TextFormat("%s zoom", scaleRender ? "Lock" : "Unlock"), scaleRender);
+			scaleRender = GuiToggle(drawRect, TextFormat("Can zoom [%c]", scaleRender ? 'X' : ' '), scaleRender);
 			drawRect.y += buttonHeight + padding;
 
 			// Draw reset controll
@@ -286,6 +320,10 @@ void DrawGUI()
 				moveOffset.x = 0.0f;
 				moveOffset.y = 0.0f;
 			}
+			drawRect.y += buttonHeight + padding;
+
+			beepOnCompleted = GuiToggle(drawRect, TextFormat("Beep [%c]", beepOnCompleted ? 'X' : ' '), beepOnCompleted);
+			drawRect.y += buttonHeight + padding;
 		}
 
 		// Process the image if paramers were changed
