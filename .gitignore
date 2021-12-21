@@ -34,9 +34,6 @@
 # Images
 *.png
 
-# Batch configurations
-*.txt
-
 !CMakeLists.txt
 
 # CMake build folder

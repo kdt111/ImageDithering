@@ -11,6 +11,7 @@
 //tinyfiledialogs header
 #include <tinyfiledialogs.h>
 
+//Project specific algorithm
 #include "dithering.h"
 #include "luaalgorithm.h"
 
