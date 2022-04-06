@@ -3,7 +3,6 @@ project(ImageDithering CXX)
 
 set(${PROJECT_NAME}_SOURCES main.cpp
 							src/algorithms/dithering.cpp
-							src/algorithms/luaalgorithm.cpp
 							src/gui/raygui.cpp)
 
 add_executable(${PROJECT_NAME} ${${PROJECT_NAME}_SOURCES})
@@ -24,15 +23,11 @@ add_subdirectory(external/raylib)
 include(cmake/raylibOptions.cmake) # raylib build configuration
 target_compile_definitions(raylib PUBLIC SUPPORT_IMAGE_EXPORT) # Force image export support
 
-# Lua
-add_subdirectory(external/Lua)
-
 # Tinyfiledialogs
 add_subdirectory(external/tinyfiledialogs)
 
 # Links
 target_link_libraries(${PROJECT_NAME} raylib)
-target_link_libraries(${PROJECT_NAME} lua_static)
 target_link_libraries(${PROJECT_NAME} tinyfiledialogs)
 
 

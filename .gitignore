@@ -31,8 +31,6 @@
 *.out
 *.app
 
-# Images
-*.png
 
 !CMakeLists.txt
 

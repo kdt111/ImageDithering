@@ -13,7 +13,6 @@
 
 //Project specific algorithm
 #include "dithering.h"
-#include "luaalgorithm.h"
 
 void (*algorithms[])(Image&, bool) = {
 	Dithering::Random,
@@ -154,24 +153,6 @@ void ExecuteAlgorithm(int algNumber, bool colored)
 		tinyfd_beep();
 }
 
-//Executes the algorithm from the external Lua script
-void ExecuteLuaAlgorihtm(const char* scriptPath)
-{
-	// Unload old data
-	UnloadTexture(texture);
-	UnloadImage(displayedImage);
-	displayedImage = ImageCopy(baseImage);
-
-	Dithering::LuaInit(displayedImage);
-	Dithering::LuaExecute(scriptPath);
-
-	// Load the resoult to the display texture
-	texture = LoadTextureFromImage(displayedImage);
-
-	if(beepOnCompleted)
-		tinyfd_beep();
-}
-
 //Handles the file dropping on the application screen
 void HandleFileDropping()
 {
@@ -287,17 +268,7 @@ void DrawGUI()
 		drawRect.y += buttonHeight + padding;
 		int initialSelected = selectedAlgorithm;
 		if(showAlgorithmSelection)
-		{
-			if (GuiButton(drawRect, "From Lua script"))
-			{
-				const char *filter[] = {"*.lua"};
-				const char *path = tinyfd_openFileDialog("Open script", filePath.c_str(), 1, filter, "Lua scripts (*.lua)", 0);
-				if(path != nullptr)
-					ExecuteLuaAlgorihtm(path);
-			}
-			drawRect.y += buttonHeight + padding;
 			selectedAlgorithm = GuiToggleGroup(drawRect, toggleButtonText, selectedAlgorithm);
-		}
 		drawRect.x += buttonWidth + padding;
 		drawRect.y = startY;
 
